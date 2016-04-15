@@ -29,7 +29,7 @@ function edam_tag_import() {
   $tools = array_slice($data, 3);
   foreach ($tools as $tool) {
     if ($tool['Tool'] == '') continue;
-    
+
     $query = new EntityFieldQuery();
     $query->entityCondition('entity_type', 'node')
     ->entityCondition('bundle', 'resource')
@@ -149,7 +149,7 @@ function edam_tag_import() {
       $node->field_resource_domain = array(
         'und' => array(
           array(
-            'value' => 'Tools',
+            'value' => 'Internal Tool',
           ),
         ),
       );
