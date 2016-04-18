@@ -14,15 +14,14 @@ function edam_tag_menu() {
   $items['edam_tag/import'] = array(
     'title' => 'Edam Tag Import',
     'description' => 'Tag with edam terms',
-    'page callback' => 'edam_tag_import',
+    'page callback' => 'edam_tag_import2',
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
   );
 
   return $items;
 }
-
-function edam_tag_import() {
+function edam_tag_import1() {
   $content = '';
   $tools_csv_file = drupal_get_path('module', 'edam_tag') . '/Tools.csv';
   $data = csv_to_array($tools_csv_file);
@@ -68,15 +67,6 @@ function edam_tag_import() {
         ),
       );
       $node->field_resource_short_description = $node->field_resource_long_description;
-      $node->field_tool_collection = array(
-        'und' => array(
-          array(
-            'value' => $tool['Collection'],
-            'format' => NULL,
-            'safe_value' => $tool['Collection'],
-          ),
-        ),
-      );
       $node->field_tool_collection = array(
         'und' => array(
           array(
@@ -239,12 +229,231 @@ function edam_tag_import() {
   return $content;
 }
 
+function edam_tag_import2() {
+  $content = '';
+  $tools_csv_file = drupal_get_path('module', 'edam_tag') . '/Tools.csv';
+  $data = csv_to_array($tools_csv_file);
+  $tools = array_slice($data, 3);
+  foreach ($tools as $tool) {
+    if ($tool['Tool'] == '') continue;
+
+    $query = new EntityFieldQuery();
+    $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'resource')
+    ->propertyCondition('status', NODE_PUBLISHED)
+    ->propertyCondition('title', $tool['Tool'])
+    ->fieldCondition('field_resource_domain', 'value', 'Tools', '=');
+    $result = $query->execute();
+    if (isset($result['node'])) {
+      $node = node_load(key($result['node']));
+      $content .= "<p>Existing node: " . $node->title . '</p>';
+    }
+    else {
+      $node = new stdClass();
+      $node->title = $tool['Tool'];
+      $node->type = "resource";
+      node_object_prepare($node);
+      $node->uid = 1;
+      $node->status = NODE_NOT_PUBLISHED;
+      $node->language = LANGUAGE_NONE;
+      $node->field_resource_url = array(
+        'und' => array(
+          array(
+            'url' => $tool['Home'],
+            'title' => NULL,
+            'attributes' => array(),
+          ),
+        ),
+      );
+      $node->field_resource_long_description = array(
+        'und' => array(
+          array(
+            'value' => $tool['Description'],
+            'format' => 'ebi_content',
+            'safe_value' => $tool['Description'],
+          ),
+        ),
+      );
+      $node->field_resource_short_description = $node->field_resource_long_description;
+      $collection = join(',', explode('|', $tool['Collection']));
+      $node->field_tool_collection = array(
+        'und' => array(
+          array(
+            'value' => $collection,
+            'format' => NULL,
+            'safe_value' => $collection,
+          ),
+        ),
+      );
+      $node->field_reference = array(
+        'und' => array(
+          array(
+            'value' => $tool['Reference'],
+            'format' => NULL,
+            'safe_value' => $tool['Reference'],
+          ),
+        ),
+      );
+      $node->field_documentation = array(
+        'und' => array(
+          array(
+            'url' => $tool['Docs'],
+            'title' => NULL,
+            'attributes' => array(),
+          ),
+        ),
+      );
+      $node->field_terms_of_use = array(
+        'und' => array(
+          array(
+            'url' => $tool['Docs'],
+            'title' => NULL,
+            'attributes' => array(),
+          ),
+        ),
+      );
+      $node->field_helpdesk = array(
+        'und' => array(
+          array(
+            'value' => $tool['Helpdesk'],
+            'format' => NULL,
+            'safe_value' => $tool['Helpdesk'],
+          ),
+        ),
+      );
+      $node->field_maintainer = array(
+        'und' => array(
+          array(
+            'value' => $tool['Contact'],
+            'format' => NULL,
+            'safe_value' => $tool['Contact'],
+          ),
+        ),
+      );
+
+      $node->field_tool_group = array(
+        'und' => array(
+          array(
+            'value' => $tool['Tool Group'],
+          ),
+        ),
+      );
+      $node->field_resource_status = array(
+        'und' => array(
+          array(
+            'value' => $tool['Maturity'],
+          ),
+        ),
+      );
+      $node->field_resource_domain = array(
+        'und' => array(
+          array(
+            'value' => 'Internal Tool',
+          ),
+        ),
+      );
+
+      //$tool['Cluster'] can't be used!
+      $node->field_resource_primary_contact = array(
+        'und' => array(
+        ),
+      );
+      $query = new EntityFieldQuery();
+      $query->entityCondition('entity_type', 'node')->propertyCondition('title', $tool['Owner (GTL)']);
+      $result = $query->execute();
+      if (isset($result['node'])) {
+        $nid = key($result['node']);
+        $node->field_resource_primary_contact = array(
+          'und' => array(
+            array(
+              'target_id' => $nid,
+            ),
+          ),
+        );
+      }
+
+      $node->field_edam_topic = array(
+        'und' => array(
+        ),
+      );
+      $node->field_operation = $node->field_input_type = $node->field_input_format = $node->field_output_type = $node->field_output_format = $node->field_edam_topic;
+
+      $iris = edam_tag_to_iri($tool['Topics']);
+      foreach($iris as $iri) {
+        $node->field_edam_topic[$node->language][] = array(
+          'value' => $iri,
+          'format' => NULL,
+          'safe_value' => $iri,
+        );
+      }
+      $iris = edam_tag_to_iri($tool['Functions']);
+      foreach($iris as $iri) {
+          $node->field_operation[$node->language][] = array(
+            'value' => $iri,
+            'format' => NULL,
+            'safe_value' => $iri,
+          );
+      }
+      $iris = edam_tag_to_iri($tool['Input (type)']);
+      foreach($iris as $iri) {
+          $node->field_input_type[$node->language][] = array(
+            'value' => $iri,
+            'format' => NULL,
+            'safe_value' => $iri,
+          );
+      }
+      $iris = edam_tag_to_iri($tool['Input (format)']);
+      foreach($iris as $iri) {
+          $node->field_input_format[$node->language][] = array(
+            'value' => $iri,
+            'format' => NULL,
+            'safe_value' => $iri,
+          );
+      }
+      $iris = edam_tag_to_iri($tool['Output (type)']);
+      foreach($iris as $iri) {
+          $node->field_output_type[$node->language][] = array(
+            'value' => $iri,
+            'format' => NULL,
+            'safe_value' => $iri,
+          );
+      }
+      $iris = edam_tag_to_iri($tool['Output (format)']);
+      foreach($iris as $iri) {
+          $node->field_output_format[$node->language][] = array(
+            'value' => $iri,
+            'format' => NULL,
+            'safe_value' => $iri,
+          );
+      }
+
+      //
+      $ids = array();
+      node_submit($node);
+      //dpm($node);
+      node_save($node);
+      //$content .= "<p>New node: \t" . $tool['Tool']. '</p>';
+    }
+  }
+  return $content;
+}
+
 function edam_tag_to_ids($text) {
   $ids = array();
   $classes = explode("|", $text);
   foreach($classes as $class) {
     preg_match('/.(\d.*)\)/', $class, $m);
     if ($m[1]) $ids[] = $m[1];
+  }
+  return $ids;
+}
+
+function edam_tag_to_iri($text) {
+  $iri = array();
+  $classes = explode("|", $text);
+  foreach($classes as $class) {
+    preg_match('/\((.*)\)/', $class, $m);
+    if ($m[1]) $ids[] = 'ebam:http://edamontology.org/' . $m[1];
   }
   return $ids;
 }
