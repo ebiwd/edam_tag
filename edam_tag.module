@@ -456,7 +456,7 @@ function edam_tag_to_iri($text) {
   $classes = explode("|", $text);
   foreach($classes as $class) {
     preg_match('/\((.*)\)/', $class, $m);
-    if ($m[1]) $ids[] = 'edam:http://edamontology.org/' . $m[1];
+    if ($m[1]) $iri[] = 'edam:http://edamontology.org/' . $m[1];
   }
   return $iri;
 }
