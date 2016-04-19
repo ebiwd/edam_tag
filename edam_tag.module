@@ -323,12 +323,6 @@ function edam_tag_import2() {
           ),
         );
       }
-
-      $node->field_edam_topic = array(
-        'und' => array(
-        ),
-      );
-      $node->field_operation = $node->field_input_type = $node->field_input_format = $node->field_output_type = $node->field_output_format = $node->field_edam_topic;
     }
 
     $collection = join(',', explode('|', $tool['Collection']));
@@ -386,6 +380,12 @@ function edam_tag_import2() {
         ),
       ),
     );
+
+    $node->field_edam_topic = array(
+      'und' => array(
+      ),
+    );
+    $node->field_operation = $node->field_input_type = $node->field_input_format = $node->field_output_type = $node->field_output_format = $node->field_edam_topic;
 
     $iris = edam_tag_to_iri($tool['Topics']);
     foreach($iris as $iri) {
