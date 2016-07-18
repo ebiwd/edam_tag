@@ -14,7 +14,7 @@ function edam_tag_menu() {
   $items['edam_tag/import'] = array(
     'title' => 'Edam Tag Import',
     'description' => 'Tag with edam terms',
-    'page callback' => 'edam_tag_import2',
+    'page callback' => 'edam_tag_import',
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
   );
@@ -22,225 +22,27 @@ function edam_tag_menu() {
   return $items;
 }
 
-/*
-function edam_tag_import1() {
+function edam_tag_import() {
+  //dev
+  $clusters = array(
+    'PPF' => 379,
+    'CD' => 380,
+    'MA' => 381,
+    'MSY' => 382,
+    'CB' => 383,
+    'MCS' => 384,
+    'GGV' => 385,
+    'TSC' => 5785,
+    'R' => 8015,
+    'TC' => 8016,
+  );
   $content = '';
   $tools_csv_file = drupal_get_path('module', 'edam_tag') . '/Tools.csv';
   $data = csv_to_array($tools_csv_file);
   $tools = array_slice($data, 3);
   foreach ($tools as $tool) {
     if ($tool['Tool'] == '') continue;
-
-    $query = new EntityFieldQuery();
-    $query->entityCondition('entity_type', 'node')
-    ->entityCondition('bundle', 'resource')
-    ->propertyCondition('status', NODE_PUBLISHED)
-    ->propertyCondition('title', $tool['Tool'])
-    ->fieldCondition('field_resource_domain', 'value', 'Tools', '=');
-    $result = $query->execute();
-    if (isset($result['node'])) {
-      $node = node_load(key($result['node']));
-      $content .= "<p>Existing node: " . $node->title . '</p>';
-    }
-    else {
-      $node = new stdClass();
-      $node->title = $tool['Tool'];
-      $node->type = "resource";
-      node_object_prepare($node);
-      $node->uid = 1;
-      $node->status = NODE_NOT_PUBLISHED;
-      $node->language = LANGUAGE_NONE;
-      $node->field_resource_url = array(
-        'und' => array(
-          array(
-            'url' => $tool['Home'],
-            'title' => NULL,
-            'attributes' => array(),
-          ),
-        ),
-      );
-      $node->field_resource_long_description = array(
-        'und' => array(
-          array(
-            'value' => $tool['Description'],
-            'format' => 'ebi_content',
-            'safe_value' => $tool['Description'],
-          ),
-        ),
-      );
-      $node->field_resource_short_description = $node->field_resource_long_description;
-      $node->field_tool_collection = array(
-        'und' => array(
-          array(
-            'value' => $tool['Collection'],
-            'format' => NULL,
-            'safe_value' => $tool['Collection'],
-          ),
-        ),
-      );
-      $node->field_pmid = array(
-        'und' => array(
-          array(
-            'value' => $tool['Reference'],
-            'format' => NULL,
-            'safe_value' => $tool['Reference'],
-          ),
-        ),
-      );
-      $node->field_resource_documentation = array(
-        'und' => array(
-          array(
-            'url' => $tool['Docs'],
-            'title' => NULL,
-            'attributes' => array(),
-          ),
-        ),
-      );
-      $node->field_resource_terms_of_use = array(
-        'und' => array(
-          array(
-            'url' => $tool['Docs'],
-            'title' => NULL,
-            'attributes' => array(),
-          ),
-        ),
-      );
-      $node->field_helpdesk = array(
-        'und' => array(
-          array(
-            'value' => $tool['Helpdesk'],
-            'format' => NULL,
-            'safe_value' => $tool['Helpdesk'],
-          ),
-        ),
-      );
-      $node->field_maintainer = array(
-        'und' => array(
-          array(
-            'value' => $tool['Contact'],
-            'format' => NULL,
-            'safe_value' => $tool['Contact'],
-          ),
-        ),
-      );
-
-      $node->field_tool_group = array(
-        'und' => array(
-          array(
-            'value' => $tool['Tool Group'],
-          ),
-        ),
-      );
-      $node->field_resource_status = array(
-        'und' => array(
-          array(
-            'value' => $tool['Maturity'],
-          ),
-        ),
-      );
-      $node->field_resource_domain = array(
-        'und' => array(
-          array(
-            'value' => 'Internal Tool',
-          ),
-        ),
-      );
-
-      //node reference
-      //$tool['Cluster'] can't be used!
-      $node->field_resource_primary_contact = array(
-        'und' => array(
-        ),
-      );
-      $query = new EntityFieldQuery();
-      $query->entityCondition('entity_type', 'node')->propertyCondition('title', $tool['Owner (GTL)']);
-      $result = $query->execute();
-      if (isset($result['node'])) {
-        $nid = key($result['node']);
-        $node->field_resource_primary_contact = array(
-          'und' => array(
-            array(
-              'target_id' => $nid,
-            ),
-          ),
-        );
-      }
-
-      //
-      //dpm($node);EDAM tags to Term ids
-      //colunm without EDAM if will not be imported!
-      $node->field_topic = array(
-        'und' => array(
-        ),
-      );
-      $node->field_operation = $node->field_input_type = $node->field_input_format = $node->field_output_type = $node->field_output_format = $node->field_topic;
-      $ids = edam_tag_to_ids($tool['Topics']);
-      foreach($ids as $id) {
-        $tid = edam_tag_id2tid($id);
-        if ($tid) {
-          $node->field_topic[$node->language][] = array('tid' => $tid);
-        }
-      }
-
-      $ids = edam_tag_to_ids($tool['Functions']);
-      foreach($ids as $id) {
-        $tid = edam_tag_id2tid($id);
-        if ($tid) {
-          $node->field_operation[$node->language][] = array('tid' => $tid);
-        }
-      }
-
-      $ids = edam_tag_to_ids($tool['Input (type)']);
-      foreach($ids as $id) {
-        $tid = edam_tag_id2tid($id);
-        if ($tid) {
-          $node->field_input_type[$node->language][] = array('tid' => $tid);
-        }
-      }
-
-      $ids = edam_tag_to_ids($tool['Input (format)']);
-      foreach($ids as $id) {
-        $tid = edam_tag_id2tid($id);
-        if ($tid) {
-          $node->field_input_format[$node->language][] = array('tid' => $tid);
-        }
-      }
-
-      $ids = edam_tag_to_ids($tool['Output (type)']);
-      foreach($ids as $id) {
-        $tid = edam_tag_id2tid($id);
-        if ($tid) {
-          $node->field_output_type[$node->language][] = array('tid' => $tid);
-        }
-      }
-
-      $ids = edam_tag_to_ids($tool['Output (format)']);
-      foreach($ids as $id) {
-        $tid = edam_tag_id2tid($id);
-        if ($tid) {
-          $node->field_output_format[$node->language][] = array('tid' => $tid);
-        }
-      }
-
-      $ids = array();
-      node_submit($node);
-      //dpm($node);
-      node_save($node);
-      //$content .= "<p>New node: \t" . $tool['Tool']. '</p>';
-    }
-  }
-  return $content;
-}
- */
-
-function edam_tag_import2() {
-  $content = '';
-  $tools_csv_file = drupal_get_path('module', 'edam_tag') . '/Tools.csv';
-  $data = csv_to_array($tools_csv_file);
-  $tools = array_slice($data, 3);
-  foreach ($tools as $tool) {
-    if ($tool['Tool'] == '') continue;
-
+    if ($tool['Tool Group'] == 'N') continue;
     $query = new EntityFieldQuery();
     $query->entityCondition('entity_type', 'node')
     ->entityCondition('bundle', 'resource')
@@ -300,12 +102,17 @@ function edam_tag_import2() {
       $node->field_resource_domain = array(
         'und' => array(
           array(
-            'value' => 'Internal Tool',
+            'value' => 'Tools',
           ),
         ),
       );
-
-      //$tool['Cluster'] can't be used!
+      $node->field_resource_cluster = array(
+        'und' => array(
+          array(
+            'target_id' => $clusters[$tool['Cluster']],
+          ),
+        ),
+      );
       $node->field_resource_primary_contact = array(
         'und' => array(
         ),
@@ -347,7 +154,7 @@ function edam_tag_import2() {
     $node->field_terms_of_use = array(
       'und' => array(
         array(
-          'url' => $tool['Docs'],
+          'url' => $tool['Terms of use'],
           'title' => NULL,
           'attributes' => array(),
         ),
