@@ -106,13 +106,16 @@ function edam_tag_import() {
           ),
         ),
       );
-      $node->field_resource_cluster = array(
-        'und' => array(
-          array(
-            'target_id' => $clusters[$tool['Cluster']],
+      $cluster_nid = $clusters[$tool['Cluster']];
+      if ($cluster_nid) {
+        $node->field_resource_cluster = array(
+          'und' => array(
+            array(
+              'target_id' => $cluster_nid,
+            ),
           ),
-        ),
-      );
+        );
+      }
       $node->field_resource_primary_contact = array(
         'und' => array(
         ),
