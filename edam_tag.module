@@ -83,15 +83,6 @@ function edam_tag_import() {
         ),
       );
       $node->field_resource_short_description = $node->field_resource_long_description;
-      $node->field_maintainer = array(
-        'und' => array(
-          array(
-            'value' => $tool['Contact'],
-            'format' => NULL,
-            'safe_value' => $tool['Contact'],
-          ),
-        ),
-      );
       $node->field_resource_status = array(
         'und' => array(
           array(
@@ -134,7 +125,15 @@ function edam_tag_import() {
         );
       }
     }
-
+    $node->field_maintainer = array(
+      'und' => array(
+        array(
+          'value' => $tool['Contact'],
+          'format' => NULL,
+          'safe_value' => $tool['Contact'],
+        ),
+      ),
+    );
     $collection = join(',', explode('|', $tool['Collection']));
     $node->field_tool_collection = array(
       'und' => array(
