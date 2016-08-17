@@ -23,7 +23,7 @@ function edam_tag_menu() {
 }
 
 function edam_tag_import() {
-  //dev
+  /*dev
   $clusters = array(
     'PPF' => 379,
     'CD' => 380,
@@ -35,7 +35,24 @@ function edam_tag_import() {
     'TSC' => 5785,
     'R' => 8015,
     'TC' => 8016,
+    'T' => 8016,
   );
+   */
+  //prod
+  $clusters = array(
+    'PPF' => 379,
+    'CD' => 380,
+    'MA' => 381,
+    'MSY' => 382,
+    'CB' => 383,
+    'MCS' => 384,
+    'GGV' => 385,
+    'TSC' => 5785,
+    'R' => 8409,
+    'TC' => 8410,
+    'T' => 8410,
+  );
+
   $content = '';
   $tools_csv_file = drupal_get_path('module', 'edam_tag') . '/Tools.csv';
   $data = csv_to_array($tools_csv_file);
