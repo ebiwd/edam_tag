@@ -22,6 +22,29 @@ function edam_tag_menu() {
   return $items;
 }
 
+function edam_tag_title2shortname() {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'resource')
+    ->propertyCondition('status', '0');
+  $result = $query->execute();
+  if (count($result['node'])) {
+    foreach($result['node'] as $nid => $value){
+      $node = node_load($nid);
+      $node->field_resource_short_name = array(
+        'und' => array(
+          array(
+            'value' => $node->title,
+            'safe_value' => $node->title,
+          ),
+        ),
+      );
+      node_submit($node);
+      node_save($node);
+    }
+  }
+}
+
 function edam_tag_import() {
   /*dev
   $clusters = array(
