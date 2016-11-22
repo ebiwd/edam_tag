@@ -1,5 +1,5 @@
 <?php
-
+define('OLS_URL', 'http://www.ebi.ac.uk/ols/api/ontologies');
 /*
  * Implementation of hook_menu()
  */
@@ -481,7 +481,31 @@ function edam_tag_add_edam_terms($key, $tool, $input_array, $vocabulary_name, $b
 
       }
 
-      node_save($node);  
+      node_save($node);
 
 
+}
+
+function edam_tag_taxonomy2ols($type = 'course') {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')->entityCondition('bundle', $type);
+  $result = $query->execute();
+  if (isset($result['node'])) {
+    $nodes = node_load_multiple(array_keys($result['node']));
+    foreach($nodes as $node) {
+      $topics = field_get_items('node', $node, 'field_topic');
+      $edam_topics = field_get_items('node', $node, 'field_edam_topic');
+      if (!$edam_topics && $topics) {
+        foreach($topics as $delta => $t) {
+          $term = taxonomy_term_load($t['tid']);
+          $url = field_get_items('taxonomy_term', $term, 'field_edam_url');
+          $url[0]['value'] = 'edam:' . $url[0]['value'];
+          $url[0]['safe_value'] = 'edam:' . $url[0]['safe_value'];
+          $node->field_edam_topic[LANGUAGE_NONE][] = $url[0];
+        }
+        node_submit($node);
+        node_save($node);
+      }
+    }
+  }
 }
