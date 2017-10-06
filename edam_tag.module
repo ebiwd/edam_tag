@@ -1,511 +1,169 @@
 <?php
-define('OLS_URL', 'http://www.ebi.ac.uk/ols/api/ontologies');
+define('EDAM_CSV', 'http://edamontology.org/EDAM.csv');
+define('EDAM_OWL', 'http://edamontology.org/EDAM.owl');
+define('EDAM_TSV', 'http://edamontology.org/EDAM.tsv');
 /*
  * Implementation of hook_menu()
  */
 function edam_tag_menu() {
-  $items['edam_tag'] = array(
-    // 'title' => 'Edam Tag',
-    'description' => 'Tag with edam terms',
-    'page callback' => 'edam_tag_output_page',
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
+  $items['admin/config/services/edam_tag'] = array(
+    'title' => t('EDAM Ontology field updates'),
+    'description' => t('Here you can find information about available updates for your EDAM terms in text field. '),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('edam_tag_page'),
+    'access arguments' => array('access obsolete report'),
+    'type' => MENU_NORMAL_ITEM,
   );
-  $items['edam_tag/import'] = array(
-    'title' => 'Edam Tag Import',
-    'description' => 'Tag with edam terms',
-    'page callback' => 'edam_tag_import',
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-
   return $items;
 }
 
-function edam_tag_title2shortname() {
-  $query = new EntityFieldQuery();
-  $query->entityCondition('entity_type', 'node')
-    ->entityCondition('bundle', 'resource')
-    ->propertyCondition('status', '0');
-  $result = $query->execute();
-  if (count($result['node'])) {
-    foreach($result['node'] as $nid => $value){
-      $node = node_load($nid);
-      $node->field_resource_short_name = array(
-        'und' => array(
-          array(
-            'value' => $node->title,
-            'safe_value' => $node->title,
-          ),
-        ),
-      );
-      node_submit($node);
-      node_save($node);
+function edam_tag_page() {
+  //edam_tag_fetch_edam_owl();
+  $form = array();
+  $list = edam_tag_update_info_from_csv();
+  $nodes = array();
+  $header = array(t('Content'), t('Obsolete terms'), t('Replaced by'), t('Consider'));
+  $rows = array();
+  $fields = array();
+  $field_info = field_info_fields();
+  foreach($field_info as $field) {
+    foreach($field['bundles'] as $entity_type => $bundles){
+      foreach($bundles as $bundle){
+        $field_setting = field_info_instance($entity_type, $field['field_name'], $bundle);
+        if (isset($field_setting['widget']['module'])) {
+          if ($field_setting['widget']['module'] == 'ebi_ols') {
+            if ($field_setting['widget']['settings']['ontology'] == 'edam') {
+              $storage = $field['storage']['details']['sql']['FIELD_LOAD_CURRENT'];
+              foreach($storage as $table=>$column) {
+                $fields[] = array(
+                    'db_table' => $table,
+                    'db_col' => $column['value'],
+                    'ontology' => $field_setting['widget']['settings']['ontology'],
+                );
+                $iri_field = $column['value'];
+                $result = db_select($table, 'f')
+                    ->fields('f')
+                    ->condition($iri_field, array_keys($list), 'IN')
+                    ->execute();
+                while($record = $result->fetchAssoc()) {
+                  //dpm($record);
+                  $nodes[$record['entity_id']][$field_setting['field_name']] = TRUE;
+                  $entity = l($record['entity_type'] . ' ' . $record['entity_id'], $record['entity_type'] . '/' . $record['entity_id']);
+                  $row =  array($entity, $record[$iri_field]) + $list[$record[$iri_field]];
+                  $rows[] = $row;
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
-}
-
-function edam_tag_import() {
-  /*dev
-  $clusters = array(
-    'PPF' => 379,
-    'CD' => 380,
-    'MA' => 381,
-    'MSY' => 382,
-    'CB' => 383,
-    'MCS' => 384,
-    'GGV' => 385,
-    'TSC' => 5785,
-    'R' => 8015,
-    'TC' => 8016,
-    'T' => 8016,
+  //dpm($fields);
+  /*foreach($list as $iri => $new_iri) {
+    $fields($fields){
+      dpm();
+    }
+  }*/
+  $form['edam_info'] = array(
+    '#type' => 'hidden',
+    '#values' => $list
   );
-   */
-  //prod
-  $clusters = array(
-    'PPF' => 379,
-    'CD' => 380,
-    'MA' => 381,
-    'MSY' => 382,
-    'CB' => 383,
-    'MCS' => 384,
-    'GGV' => 385,
-    'TSC' => 5785,
-    'R' => 8409,
-    'TC' => 8410,
-    'T' => 8410,
+  $form['nodes'] = array(
+    '#type' => 'hidden',
+    '#values' => $nodes
   );
+  $table = theme('table', array('header' => $header, 'rows' => $rows));
+  $form['table'] = array(
+    '#type' => 'markup',
+    '#markup' => $table,
+  );
+  $form['some_text'] = array(
+    '#markup' => t('<p>Only terms with "replace by" can be updated automatically here. For obsolete terms with only "consider", you need manually check the new terms. </p>'),
+  );
+  $form['submit'] = array (
+    '#type' => 'submit',
+    '#value' => t('Update'),
+  );
+  return $form;
+}
 
-  $content = '';
-  $tools_csv_file = drupal_get_path('module', 'edam_tag') . '/Tools.csv';
-  $data = csv_to_array($tools_csv_file);
-  $tools = array_slice($data, 3);
-  foreach ($tools as $tool) {
-    if ($tool['Tool'] == '') continue;
-    if ($tool['Tool Group'] == 'N') continue;
-    $query = new EntityFieldQuery();
-    $query->entityCondition('entity_type', 'node')
-    ->entityCondition('bundle', 'resource')
-    ->propertyCondition('status', NODE_PUBLISHED)
-    ->propertyCondition('title', $tool['Tool'])
-    ->fieldCondition('field_resource_domain', 'value', 'Tools', '=');
-    $result = $query->execute();
-    if (isset($result['node'])) {
-      $node = node_load(key($result['node']));
-      //dpm($node);
-      $content .= "<p>Update node: " . $node->title . '</p>';
-    }
-    else {
-      $node = new stdClass();
-      $node->title = $tool['Tool'];
-      $content .= "<p>Create node: " . $node->title . '</p>';
-      $node->type = "resource";
-      node_object_prepare($node);
-      $node->uid = 1;
-      $node->status = NODE_NOT_PUBLISHED;
-      $node->language = LANGUAGE_NONE;
-      $node->field_resource_url = array(
-        'und' => array(
-          array(
-            'url' => $tool['Home'],
-            'title' => NULL,
-            'attributes' => array(),
-          ),
-        ),
-      );
-      $node->field_resource_long_description = array(
-        'und' => array(
-          array(
-            'value' => $tool['Description'],
-            'format' => 'ebi_content',
-            'safe_value' => $tool['Description'],
-          ),
-        ),
-      );
-      $node->field_resource_short_description = $node->field_resource_long_description;
-      $node->field_resource_status = array(
-        'und' => array(
-          array(
-            'value' => $tool['Maturity'],
-          ),
-        ),
-      );
-      $node->field_resource_domain = array(
-        'und' => array(
-          array(
-            'value' => 'Tools',
-          ),
-        ),
-      );
-      $cluster_nid = $clusters[$tool['Cluster']];
-      if ($cluster_nid) {
-        $node->field_resource_cluster = array(
-          'und' => array(
-            array(
-              'target_id' => $cluster_nid,
-            ),
-          ),
-        );
+function edam_tag_page_submit($form, &$form_state) {
+  $batch = array(
+    'title' => t('Updating terms with "replaced by"'),
+    'init_message' => t('Beginning updating'),
+    'progress_message' => t('Updated @current out of @total nodes'),
+    'error_message' => t('Updating failed.'),
+  );
+  foreach($form['nodes']['#values'] as $nid => $fields) {
+    $batch['operations'][] = array('_edam_tag_update', array($form['edam_info']['#values'], $nid, $fields));
+  }
+  batch_set($batch);
+}
+
+function _edam_tag_update($edam_info, $nid, $fields) {
+  $node = node_load($nid);
+  foreach ($fields as $fieldname=>$flag) {
+    foreach ($node->$fieldname[LANGUAGE_NONE] as $index => $field) {
+      if ($edam_info[$field[value]]['replaceby'] != '') {
+        $new_iri = $edam_info[$field[value]]['replaceby'];
+        $node->$fieldname[LANGUAGE_NONE][$index]['value'] = $new_iri;
+        $node->$fieldname[LANGUAGE_NONE][$index]['safe_value'] = $new_iri;
       }
-      $node->field_resource_primary_contact = array(
-        'und' => array(
-        ),
-      );
-      $query = new EntityFieldQuery();
-      $query->entityCondition('entity_type', 'node')->propertyCondition('title', $tool['Owner (GTL)']);
-      $result = $query->execute();
-      if (isset($result['node'])) {
-        $nid = key($result['node']);
-        $node->field_resource_primary_contact = array(
-          'und' => array(
-            array(
-              'target_id' => $nid,
-            ),
-          ),
+    }
+  }
+  node_submit($node);
+  node_save($node);
+  return TRUE;
+}
+
+function edam_tag_update_info_from_csv() {
+  if ($cache = cache_get('edam_tag:update_info')) {
+    return $cache->data;
+  }
+  $csv = array_map('str_getcsv', file(EDAM_CSV));
+  $header = array_shift($csv);
+  $replaced_pos = array_search("http://www.geneontology.org/formats/oboInOwl#replacedBy", $header);
+  $consider_pos = array_search("http://www.geneontology.org/formats/oboInOwl#consider", $header);
+  $obsolete_pos = array_search("Obsolete", $header);
+  $list = array();
+  foreach($csv as $row) {
+    if (isset($row[$obsolete_pos])) {
+      if (strtolower($row[$obsolete_pos]) == 'true') {
+        $iri = $row[0];
+        $list['edam:' . $iri] = array(
+          'replaceby' => $row[$replaced_pos] ? 'edam:' . $row[$replaced_pos] : '',
+          'consider' => $row[$consider_pos] ? 'edam:' . $row[$consider_pos] : '',
         );
       }
     }
-    $node->field_maintainer = array(
-      'und' => array(
-        array(
-          'value' => $tool['Contact'],
-          'format' => NULL,
-          'safe_value' => $tool['Contact'],
-        ),
-      ),
-    );
-    $collection = join(',', explode('|', $tool['Collection']));
-    $node->field_tool_collection = array(
-      'und' => array(
-        array(
-          'value' => $collection,
-          'format' => NULL,
-          'safe_value' => $collection,
-        ),
-      ),
-    );
-    $node->field_reference = array(
-      'und' => array(
-        array(
-          'value' => $tool['Reference'],
-          'format' => NULL,
-          'safe_value' => $tool['Reference'],
-        ),
-      ),
-    );
-    $node->field_terms_of_use = array(
-      'und' => array(
-        array(
-          'url' => $tool['Terms of use'],
-          'title' => NULL,
-          'attributes' => array(),
-        ),
-      ),
-    );
-    $node->field_helpdesk = array(
-      'und' => array(
-        array(
-          'value' => $tool['Helpdesk'],
-          'format' => NULL,
-          'safe_value' => $tool['Helpdesk'],
-        ),
-      ),
-    );
-
-    $node->field_tool_group = array(
-      'und' => array(
-        array(
-          'value' => $tool['Tool Group'],
-        ),
-      ),
-    );
-
-    $node->field_documentation = array(
-      'und' => array(
-        array(
-          'url' => $tool['Docs'],
-          'title' => NULL,
-          'attributes' => array(),
-        ),
-      ),
-    );
-
-    $node->field_edam_topic = array(
-      'und' => array(
-      ),
-    );
-    $node->field_operation = $node->field_input_type = $node->field_input_format = $node->field_output_type = $node->field_output_format = $node->field_edam_topic;
-
-    $iris = edam_tag_to_iri($tool['Topics']);
-    foreach($iris as $iri) {
-      $node->field_edam_topic[$node->language][] = array(
-        'value' => $iri,
-        'format' => NULL,
-        'safe_value' => $iri,
-      );
-    }
-    $iris = edam_tag_to_iri($tool['Functions']);
-    foreach($iris as $iri) {
-        $node->field_operation[$node->language][] = array(
-          'value' => $iri,
-          'format' => NULL,
-          'safe_value' => $iri,
-        );
-    }
-    $iris = edam_tag_to_iri($tool['Input (type)']);
-    foreach($iris as $iri) {
-        $node->field_input_type[$node->language][] = array(
-          'value' => $iri,
-          'format' => NULL,
-          'safe_value' => $iri,
-        );
-    }
-    $iris = edam_tag_to_iri($tool['Input (format)']);
-    foreach($iris as $iri) {
-        $node->field_input_format[$node->language][] = array(
-          'value' => $iri,
-          'format' => NULL,
-          'safe_value' => $iri,
-        );
-    }
-    $iris = edam_tag_to_iri($tool['Output (type)']);
-    foreach($iris as $iri) {
-        $node->field_output_type[$node->language][] = array(
-          'value' => $iri,
-          'format' => NULL,
-          'safe_value' => $iri,
-        );
-    }
-    $iris = edam_tag_to_iri($tool['Output (format)']);
-    foreach($iris as $iri) {
-        $node->field_output_format[$node->language][] = array(
-          'value' => $iri,
-          'format' => NULL,
-          'safe_value' => $iri,
-        );
-    }
-    node_submit($node);
-    node_save($node);
   }
-  return $content;
-}
-
-function edam_tag_to_ids($text) {
-  $ids = array();
-  $classes = explode("|", $text);
-  foreach($classes as $class) {
-    preg_match('/.(\d.*)\)/', $class, $m);
-    if ($m[1]) $ids[] = $m[1];
-  }
-  return $ids;
-}
-
-function edam_tag_to_iri($text) {
-  $iri = array();
-  $classes = explode("|", $text);
-  foreach($classes as $class) {
-    preg_match('/\((.*)\)/', $class, $m);
-    if ($m[1]) $iri[] = 'edam:http://edamontology.org/' . $m[1];
-  }
-  return $iri;
-}
-
-function edam_tag_id2tid($id) {
-  $query = new EntityFieldQuery();
-  $query->entityCondition('entity_type', 'taxonomy_term')
-    ->fieldCondition('field_edam_term_id', 'value', $id . '%', 'like');
-  $result = $query->execute();
-  if (isset($result['taxonomy_term'])) {
-    $tid = key($result['taxonomy_term']);
-    return $tid;
-  }
-  else {
-    return;
-  }
-}
-
-function edam_tag_output_page() {
-  // Get resources from staff site
-  $resources_output_array = array();
-
-  $query = new EntityFieldQuery();
-
-  $query->entityCondition('entity_type', 'node')
-  ->entityCondition('bundle', 'resource')
-  ->propertyCondition('status', NODE_PUBLISHED)
-  ->fieldCondition('field_resource_domain', 'value', 'Tools', '=');
-
-  $result = $query->execute();
-
-  if (isset($result['node'])) {
-    $resource_nids = array_keys($result['node']);
-    $resource_items = entity_load('node', $resource_nids);
-
-    foreach($resource_items as $resource) {
-      $resources_output_array[$resource->nid] = $resource->title;
-    }
-  }
-
-  // Parse tools csv file
-  $tools_csv_file = drupal_get_path('module', 'edam_tag') . '/ebitools.csv';
-  $tools_array = csv_to_array($tools_csv_file);
-
-  $tools_output_array = array();
-
-  foreach($tools_array as $tool) {
-    $tool_name = $tool['Name'];
-    $tools_output_array[$tool_name] = array();
-
-    $tools_output_array[$tool_name]['topic'] = edam_tag_edam_parse($tool['Topics']);
-    $tools_output_array[$tool_name]['operation'] = edam_tag_edam_parse($tool['Functions']);
-    $tools_output_array[$tool_name]['data'] = edam_tag_edam_parse($tool['Input (type)']);
-  }
-
-
-  asort($resources_output_array);
-
-  foreach($resources_output_array as $key => $arr) {
-
-    if($tools_output_array["$arr"]) {
-
-      // Add the EDAM terms
-      // print "<h3>$arr</h3>";
-      // edam_tag_add_edam_terms($key, $arr, $tools_output_array, 'edam_topic', 'topic');
-      // edam_tag_add_edam_terms($key, $arr, $tools_output_array, 'edam_operation', 'operation');
-      // edam_tag_add_edam_terms($key, $arr, $tools_output_array, 'edam_data', 'data');
-
-    } else {
-      $output_text .=  "<h2>$arr</h2>";
-
-    }
-  }
-
-  return $output_text;
-
-}
-
-/**
- * Convert a comma separated file into an associated array.
- * The first row should contain the array keys.
- *
- * Example:
- *
- * @param string $filename Path to the CSV file
- * @param string $delimiter The separator used in the file
- * @return array
- * @link http://gist.github.com/385876
- * @author Jay Williams <http://myd3.com/>
- * @copyright Copyright (c) 2010, Jay Williams
- * @license http://www.opensource.org/licenses/mit-license.php MIT License
- */
-function csv_to_array($filename='', $delimiter=',') {
-  if(!file_exists($filename) || !is_readable($filename))
-    return FALSE;
-  $header = NULL;
-  $data = array();
-  if (($handle = fopen($filename, 'r')) !== FALSE)
-  {
-    while (($row = fgetcsv($handle, 1000, $delimiter)) !== FALSE)
-    {
-      if(!$header)
-        $header = $row;
-      else
-        $data[] = array_combine($header, $row);
-    }
-    fclose($handle);
-  }
-  return $data;
+  cache_set('edam_tag:update_info', $list, 'cache');
+  return $list;
 }
 
 
-function edam_tag_edam_parse($edam_category) {
-
-  $cat_array = explode('|', $edam_category);
-  $term_array = array();
-
-  foreach($cat_array as $cat) {
-    $pattern='~(.*) \(([a-z]+)(_\d+)\)$~';
-    $match = array();
-    $success = preg_match($pattern, $cat, $match);
-
-    if ($success) {
-
-      $term = $match[1];
-      $edam_type = $match[2];
-      $edam_id = $match[2] . $match[3];
-      $term_array[$edam_id] = $term;
-    }
-
-  }
-
-  return $term_array;
-}
-
-
-function edam_tag_add_edam_terms($key, $tool, $input_array, $vocabulary_name, $branch) {
-
-
-      // // Load the node
-      $node = node_load($key);
-
-      // // Add the EDAM topics
-      print "<b>$branch</b><br />";
-  
-      $vocab = taxonomy_vocabulary_machine_name_load($vocabulary_name);
-  
-      foreach($input_array["$tool"][$branch] as $eid => $term) {
-
-      print  $term . '<br />';
-
-      //   // Get taxonomy term from EDAM id
-        $query = new EntityFieldQuery();
-        $query->entityCondition('entity_type', 'taxonomy_term')
-          ->entityCondition('bundle', $vocabulary_name)
-          ->propertyCondition('vid', $vocab->vid)
-          ->fieldCondition('field_edam_id', 'value', $eid, '=');
-
-
-        $result = $query->execute();
-
-
-        if (isset($result['taxonomy_term'])) {
-          $tids = array_keys($result['taxonomy_term']);
-          $terms = entity_load('taxonomy_term', $tids);
+function edam_tag_update_info_from_owl() {
+  //$request = drupal_http_request(EDAM_OWL);
+  $xml = new XMLReader;
+  $xml->open(EDAM_OWL);
+  while ($xml->read()) {
+    switch ($xml->nodeType) {
+      case XMLReader::ELEMENT:
+        if ($xml->localName == 'Class' && $xml->getAttribute('rdf:about')) {
+          $iri = ($xml->getAttribute('rdf:about'));
+          //dpm($iri);
+          /*while ($xml->readInnerXml()) {
+            if ($xml->localName == 'replacedBy' && $xml->getAttribute('rdf:resource')) {
+              dpm($xml->name);
+            }
+          }*/
+          //dpm($xml->getAttribute('rdf:resource'));
+          //dpm($xml->name);
         }
-
-        foreach($terms as $tax_term) {
-            $term_add_arr = array('tid' => $tax_term->tid);
-            $field_name = 'field_resource_edam_' . $branch;
-            $node->{$field_name}[$node->language][] = array('tid' => $tax_term->tid);
-        }
-
-      }
-
-      node_save($node);
-
-
-}
-
-function edam_tag_taxonomy2ols($type = 'course') {
-  $query = new EntityFieldQuery();
-  $query->entityCondition('entity_type', 'node')->entityCondition('bundle', $type);
-  $result = $query->execute();
-  if (isset($result['node'])) {
-    $nodes = node_load_multiple(array_keys($result['node']));
-    foreach($nodes as $node) {
-      $topics = field_get_items('node', $node, 'field_topic');
-      $edam_topics = field_get_items('node', $node, 'field_edam_topic');
-      if (!$edam_topics && $topics) {
-        foreach($topics as $delta => $t) {
-          $term = taxonomy_term_load($t['tid']);
-          $url = field_get_items('taxonomy_term', $term, 'field_edam_url');
-          $url[0]['value'] = 'edam:' . $url[0]['value'];
-          $url[0]['safe_value'] = 'edam:' . $url[0]['safe_value'];
-          $node->field_edam_topic[LANGUAGE_NONE][] = $url[0];
-        }
-        node_submit($node);
-        node_save($node);
-      }
+      default:
     }
   }
+  //$query = '//book/chapter/para/informaltable/tgroup/tbody/row/entry[. = "en"]';
+  //dpm($xml);
 }

@@ -1,6 +1,5 @@
 name = Edam Tag
-description = Tag staff resources with edam terms from tools process spreadsheet
+description = Automatic update EDAM terms in text field
 package = ebi
-version = "7.x-1.0-dev"
 core = "7.x"
-project = "edam_tag"
+dependencies[] = ebi_ols
