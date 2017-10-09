@@ -1,8 +1,15 @@
 <?php
+
+/**
+ * @file
+ */
+
 define('EDAM_CSV', 'http://edamontology.org/EDAM.csv');
 define('EDAM_OWL', 'http://edamontology.org/EDAM.owl');
 define('EDAM_TSV', 'http://edamontology.org/EDAM.tsv');
-/*
+module_load_include('inc', 'edam_tag', 'edam_tag.csv');
+
+/**
  * Implementation of hook_menu()
  */
 function edam_tag_menu() {
@@ -17,8 +24,11 @@ function edam_tag_menu() {
   return $items;
 }
 
+/**
+ *
+ */
 function edam_tag_page() {
-  //edam_tag_fetch_edam_owl();
+  // edam_tag_fetch_edam_owl();
   $form = array();
   $list = edam_tag_update_info_from_csv();
   $nodes = array();
@@ -26,30 +36,30 @@ function edam_tag_page() {
   $rows = array();
   $fields = array();
   $field_info = field_info_fields();
-  foreach($field_info as $field) {
-    foreach($field['bundles'] as $entity_type => $bundles){
-      foreach($bundles as $bundle){
+  foreach ($field_info as $field) {
+    foreach ($field['bundles'] as $entity_type => $bundles) {
+      foreach ($bundles as $bundle) {
         $field_setting = field_info_instance($entity_type, $field['field_name'], $bundle);
         if (isset($field_setting['widget']['module'])) {
           if ($field_setting['widget']['module'] == 'ebi_ols') {
             if ($field_setting['widget']['settings']['ontology'] == 'edam') {
               $storage = $field['storage']['details']['sql']['FIELD_LOAD_CURRENT'];
-              foreach($storage as $table=>$column) {
+              foreach ($storage as $table => $column) {
                 $fields[] = array(
-                    'db_table' => $table,
-                    'db_col' => $column['value'],
-                    'ontology' => $field_setting['widget']['settings']['ontology'],
+                  'db_table' => $table,
+                  'db_col' => $column['value'],
+                  'ontology' => $field_setting['widget']['settings']['ontology'],
                 );
                 $iri_field = $column['value'];
                 $result = db_select($table, 'f')
-                    ->fields('f')
-                    ->condition($iri_field, array_keys($list), 'IN')
-                    ->execute();
-                while($record = $result->fetchAssoc()) {
-                  //dpm($record);
+                  ->fields('f')
+                  ->condition($iri_field, array_keys($list), 'IN')
+                  ->execute();
+                while ($record = $result->fetchAssoc()) {
+                  // dpm($record);
                   $nodes[$record['entity_id']][$field_setting['field_name']] = TRUE;
                   $entity = l($record['entity_type'] . ' ' . $record['entity_id'], $record['entity_type'] . '/' . $record['entity_id']);
-                  $row =  array($entity, $record[$iri_field]) + $list[$record[$iri_field]];
+                  $row = array($entity, $record[$iri_field]) + $list[$record[$iri_field]];
                   $rows[] = $row;
                 }
               }
@@ -59,19 +69,19 @@ function edam_tag_page() {
       }
     }
   }
-  //dpm($fields);
+  // dpm($fields);
   /*foreach($list as $iri => $new_iri) {
-    $fields($fields){
-      dpm();
-    }
+  $fields($fields){
+  dpm();
+  }
   }*/
   $form['edam_info'] = array(
     '#type' => 'hidden',
-    '#values' => $list
+    '#values' => $list,
   );
   $form['nodes'] = array(
     '#type' => 'hidden',
-    '#values' => $nodes
+    '#values' => $nodes,
   );
   $table = theme('table', array('header' => $header, 'rows' => $rows));
   $form['table'] = array(
@@ -81,13 +91,16 @@ function edam_tag_page() {
   $form['some_text'] = array(
     '#markup' => t('<p>Only terms with "replace by" can be updated automatically here. For obsolete terms with only "consider", you need manually check the new terms. </p>'),
   );
-  $form['submit'] = array (
+  $form['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Update'),
   );
   return $form;
 }
 
+/**
+ *
+ */
 function edam_tag_page_submit($form, &$form_state) {
   $batch = array(
     'title' => t('Updating terms with "replaced by"'),
@@ -95,15 +108,18 @@ function edam_tag_page_submit($form, &$form_state) {
     'progress_message' => t('Updated @current out of @total nodes'),
     'error_message' => t('Updating failed.'),
   );
-  foreach($form['nodes']['#values'] as $nid => $fields) {
+  foreach ($form['nodes']['#values'] as $nid => $fields) {
     $batch['operations'][] = array('_edam_tag_update', array($form['edam_info']['#values'], $nid, $fields));
   }
   batch_set($batch);
 }
 
+/**
+ *
+ */
 function _edam_tag_update($edam_info, $nid, $fields) {
   $node = node_load($nid);
-  foreach ($fields as $fieldname=>$flag) {
+  foreach ($fields as $fieldname => $flag) {
     foreach ($node->$fieldname[LANGUAGE_NONE] as $index => $field) {
       if ($edam_info[$field[value]]['replaceby'] != '') {
         $new_iri = $edam_info[$field[value]]['replaceby'];
@@ -117,23 +133,27 @@ function _edam_tag_update($edam_info, $nid, $fields) {
   return TRUE;
 }
 
+/**
+ *
+ */
 function edam_tag_update_info_from_csv() {
   if ($cache = cache_get('edam_tag:update_info')) {
     return $cache->data;
   }
-  $csv = array_map('str_getcsv', file(EDAM_CSV));
+  $request = drupal_http_request(EDAM_CSV);
+  $csv = parse_csv($request->data);
   $header = array_shift($csv);
   $replaced_pos = array_search("http://www.geneontology.org/formats/oboInOwl#replacedBy", $header);
   $consider_pos = array_search("http://www.geneontology.org/formats/oboInOwl#consider", $header);
   $obsolete_pos = array_search("Obsolete", $header);
   $list = array();
-  foreach($csv as $row) {
+  foreach ($csv as $row) {
     if (isset($row[$obsolete_pos])) {
       if (strtolower($row[$obsolete_pos]) == 'true') {
         $iri = $row[0];
         $list['edam:' . $iri] = array(
           'replaceby' => $row[$replaced_pos] ? 'edam:' . $row[$replaced_pos] : '',
-          'consider' => $row[$consider_pos] ? 'edam:' . $row[$consider_pos] : '',
+          'consider' => isset($row[$consider_pos]) ? 'edam:' . $row[$consider_pos] : '',
         );
       }
     }
@@ -142,28 +162,30 @@ function edam_tag_update_info_from_csv() {
   return $list;
 }
 
-
+/**
+ *
+ */
 function edam_tag_update_info_from_owl() {
-  //$request = drupal_http_request(EDAM_OWL);
-  $xml = new XMLReader;
+  // $request = drupal_http_request(EDAM_OWL);
+  $xml = new XMLReader();
   $xml->open(EDAM_OWL);
   while ($xml->read()) {
     switch ($xml->nodeType) {
       case XMLReader::ELEMENT:
         if ($xml->localName == 'Class' && $xml->getAttribute('rdf:about')) {
           $iri = ($xml->getAttribute('rdf:about'));
-          //dpm($iri);
+          // dpm($iri);
           /*while ($xml->readInnerXml()) {
-            if ($xml->localName == 'replacedBy' && $xml->getAttribute('rdf:resource')) {
-              dpm($xml->name);
-            }
+          if ($xml->localName == 'replacedBy' && $xml->getAttribute('rdf:resource')) {
+          dpm($xml->name);
+          }
           }*/
-          //dpm($xml->getAttribute('rdf:resource'));
-          //dpm($xml->name);
+          // dpm($xml->getAttribute('rdf:resource'));
+          // dpm($xml->name);.
         }
       default:
     }
   }
-  //$query = '//book/chapter/para/informaltable/tgroup/tbody/row/entry[. = "en"]';
-  //dpm($xml);
+  // $query = '//book/chapter/para/informaltable/tgroup/tbody/row/entry[. = "en"]';
+  // dpm($xml);
 }

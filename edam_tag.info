@@ -3,3 +3,4 @@ description = Automatic update EDAM terms in text field
 package = ebi
 core = "7.x"
 dependencies[] = ebi_ols
+files[] = edam_tag.csv.inc
