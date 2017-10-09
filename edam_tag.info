@@ -4,3 +4,4 @@ package = ebi
 core = "7.x"
 dependencies[] = ebi_ols
 files[] = edam_tag.csv.inc
+configure = "admin/config/services/edam_tag"
